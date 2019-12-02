@@ -10,9 +10,12 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/miekg/dns"
 )
 
 type request struct {
@@ -31,6 +34,8 @@ var (
 	sni             = ""
 	nameserversStr  = ""
 	nameserversFile = ""
+	ecssStr         = ""
+	ecssFile        = ""
 	cdnnodesStr     = ""
 	cdnnodesFile    = ""
 	connectTimeout  = 30 * time.Second
@@ -43,8 +48,10 @@ func init() {
 	flag.StringVar(&sni, "sni", sni, "TLS ServerNameIdentifier")
 	flag.StringVar(&nameserversStr, "nameservers", nameserversStr, "nameservers ip address seperate with ';'")
 	flag.StringVar(&nameserversFile, "ns-from-file", nameserversFile, "nameservers ip address, one line one")
+	flag.StringVar(&ecssStr, "ecss", ecssStr, "enable edns-client-subnet feature, address seperate with ';', example: '1.2.3.4/30'")
+	flag.StringVar(&ecssFile, "ecss-from-file", ecssFile, "enable edns-client-subnet feature, address from file, one line one, example: '1.2.3.4/30'")
 	flag.StringVar(&cdnnodesStr, "cdnnodes", cdnnodesStr, "cdnnodes ip address seperate with ';'")
-	flag.StringVar(&cdnnodesFile, "cdnnodes-from-file", cdnnodesFile, "cdnnodes ip address, one line one")
+	flag.StringVar(&cdnnodesFile, "cdnnodes-from-file", cdnnodesFile, "file cdnnodes ip address, one line one")
 	flag.DurationVar(&connectTimeout, "connect-timeout", connectTimeout, "timeout in establishe connection")
 	flag.DurationVar(&readTimeout, "read-timeout", readTimeout, "read timeout in established connection")
 }
@@ -53,7 +60,7 @@ func combineIpStrFile(_str, _file string) []string {
 	var _array []string
 	for _, _s := range strings.Split(_str, ";") {
 		_s = strings.TrimSpace(strings.Trim(_s, "\n"))
-		if _s == "" {
+		if _s == "" || strings.HasPrefix(_s, "#") {
 			continue
 		}
 		// skip check
@@ -69,7 +76,7 @@ func combineIpStrFile(_str, _file string) []string {
 	for _, _byteline := range bytes.Split(_bs, []byte("\n")) {
 		_byteline = bytes.TrimSpace(bytes.Trim(_byteline, "\n"))
 		_line := string(_byteline)
-		if _line == "" {
+		if _line == "" || strings.HasPrefix(_line, "#") {
 			continue
 		}
 		// skip check
@@ -86,6 +93,10 @@ func getNameServers(_str, _file string) []string {
 }
 
 func getCdnnodes(_str, _file string) []string {
+	return combineIpStrFile(_str, _file)
+}
+
+func getEcss(_str, _file string) []string {
 	return combineIpStrFile(_str, _file)
 }
 
@@ -108,7 +119,64 @@ func removeDuplicate(_array []string) []string {
 
 func lookupAWithEcs(_name, _nameserver, _ecs string) []string {
 	var _ips []string
-	// TODO
+	_queryMsg := new(dns.Msg)
+	_queryMsg.Id = dns.Id()
+	_queryMsg.RecursionDesired = true
+	_queryMsg.Question = make([]dns.Question, 1)
+	if _, _, _err := net.SplitHostPort(_nameserver); _err != nil {
+		_nameserver = _nameserver + ":" + "53"
+	}
+	_queryMsg.Question[0] = dns.Question{
+		Name:   dns.Fqdn(_name),
+		Qtype:  dns.TypeA,
+		Qclass: dns.ClassINET,
+	}
+
+	// edns-client-subnet
+	_IpNetmask := strings.Split(_ecs, "/")
+	_ecs_ip, _ecs_netmask := _ecs, 30
+	if len(_IpNetmask) == 2 {
+		_ecs_ip = _IpNetmask[0]
+		if _netmask, _err := strconv.Atoi(_IpNetmask[1]); _err == nil {
+			_ecs_netmask = _netmask
+		}
+	}
+
+	if _ip := net.ParseIP(_ecs_ip); _ip != nil {
+		_opt := new(dns.OPT)
+		_opt.Hdr.Name = "."
+		_opt.Hdr.Rrtype = dns.TypeOPT
+		// ipv6 mtu - udp header : 1280 - 48 = 1232
+		_opt.SetUDPSize(1232)
+		_opt_ecs := new(dns.EDNS0_SUBNET)
+		if _ipv4 := _ip.To4(); _ipv4 != nil {
+			_opt_ecs.Family = 1
+			_opt_ecs.Address = _ipv4
+		} else if _ipv6 := _ip.To16(); _ipv6 != nil {
+			_opt_ecs.Family = 2
+			_opt_ecs.Address = _ipv6
+		}
+		_opt_ecs.Code = dns.EDNS0SUBNET
+		_opt_ecs.SourceNetmask = uint8(_ecs_netmask)
+		_opt_ecs.SourceScope = uint8(_ecs_netmask)
+
+		_opt.Option = append(_opt.Option, _opt_ecs)
+
+		if _opt != nil {
+			_queryMsg.Extra = []dns.RR{_opt}
+		}
+	}
+	_client := new(dns.Client)
+	_client.Timeout = 30 * time.Second
+	_respMsg, _, _err := _client.Exchange(_queryMsg, _nameserver)
+	if _err != nil {
+		return _ips
+	}
+	for _, _rr := range _respMsg.Answer {
+		if _a, _ok := _rr.(*dns.A); _ok {
+			_ips = append(_ips, _a.A.String())
+		}
+	}
 	return _ips
 }
 
@@ -159,34 +227,36 @@ func main() {
 		flag.Usage()
 	}
 
-	_nameservers := getNameServers(nameserversStr, nameserversFile)
-	_cdnnodes := getCdnnodes(cdnnodesStr, cdnnodesFile)
 	_urlStruct, _err := url.Parse(targetUrl)
 	if _err != nil {
 		panic(_err)
 	}
 	_host := _urlStruct.Hostname()
 
+	_cdnnodes := getCdnnodes(cdnnodesStr, cdnnodesFile)
+
+	_nameservers := getNameServers(nameserversStr, nameserversFile)
 	_nameservers = removeDuplicate(_nameservers)
+	_ecss := getEcss(ecssStr, ecssFile)
+	_ecss = removeDuplicate(_ecss)
 	for _, _ns := range _nameservers {
-		_ips := lookupAWithEcs(_host, _ns, "")
-		for _, _ip := range _ips {
-			_cdnnodes = append(_cdnnodes, _ip)
+		for _, _ecs := range _ecss {
+			_ips := lookupAWithEcs(_host, _ns, _ecs)
+			fmt.Printf("[Resolver] Domain: '%s', NameServer: '%s', ECS: '%s', Answer: '%v'\n", _host, _ns, _ecs, _ips)
+			for _, _ip := range _ips {
+				_cdnnodes = append(_cdnnodes, _ip)
+			}
 		}
 	}
 	_cdnnodes = removeDuplicate(_cdnnodes)
 
-	var _urls []string
 	_oldHost := _host
+	// do request
+	var wg sync.WaitGroup
 	for _, _node := range _cdnnodes {
 		_hostPort := strings.Replace(_urlStruct.Host, _oldHost, _node, 1)
 		_urlStruct.Host = _hostPort
-		_urls = append(_urls, _urlStruct.String())
-		_oldHost = _node
-	}
-	// do request
-	var wg sync.WaitGroup
-	for _, _url := range _urls {
+		_url := _urlStruct.String()
 		wg.Add(1)
 		go func(_url string) {
 			//
@@ -201,12 +271,13 @@ func main() {
 			}
 			_resp, _err := _req.send()
 			if _err != nil {
-				fmt.Printf("URL: '%s', Host: '%s', Error: '%v'\n", _req.url, _host, _err)
+				fmt.Printf("[Fetcher] URL: '%s', Host: '%s', Error: '%v'\n", _req.url, _host, _err)
 			} else if _resp != nil {
-				fmt.Printf("URL: '%s', Host: '%s', Status: '%d'\n", _req.url, _host, _resp.StatusCode)
+				fmt.Printf("[Fetcher] URL: '%s', Host: '%s', Status: '%d'\n", _req.url, _host, _resp.StatusCode)
 			}
 			wg.Done()
 		}(_url)
+		_oldHost = _node
 	}
 	wg.Wait()
 }
