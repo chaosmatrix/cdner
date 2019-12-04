@@ -29,17 +29,20 @@ type request struct {
 }
 
 var (
-	targetUrl       = ""
-	http2           = false
-	sni             = ""
-	nameserversStr  = ""
-	nameserversFile = ""
-	ecssStr         = ""
-	ecssFile        = ""
-	cdnnodesStr     = ""
-	cdnnodesFile    = ""
-	connectTimeout  = 30 * time.Second
-	readTimeout     = 30 * time.Second
+	targetUrl            = ""
+	http2                = false
+	sni                  = ""
+	nameserversStr       = ""
+	nameserversFile      = ""
+	ecssStr              = ""
+	ecssFile             = ""
+	cdnnodesStr          = ""
+	cdnnodesFile         = ""
+	connectTimeout       = 30 * time.Second
+	readTimeout          = 30 * time.Second
+	dnsTimeout           = 5 * time.Second
+	dnsUseTcp            = false
+	dnsBufferSize   uint = 1232
 )
 
 func init() {
@@ -54,6 +57,9 @@ func init() {
 	flag.StringVar(&cdnnodesFile, "cdnnodes-from-file", cdnnodesFile, "file cdnnodes ip address, one line one")
 	flag.DurationVar(&connectTimeout, "connect-timeout", connectTimeout, "timeout in establishe connection")
 	flag.DurationVar(&readTimeout, "read-timeout", readTimeout, "read timeout in established connection")
+	flag.DurationVar(&dnsTimeout, "dns-timeout", dnsTimeout, "dns timeout")
+	flag.BoolVar(&dnsUseTcp, "dns-use-tcp", dnsUseTcp, "dns query via tcp protocol")
+	flag.UintVar(&dnsBufferSize, "dns-buffer-size", dnsBufferSize, "dns response buffer size")
 }
 
 func combineIpStrFile(_str, _file string) []string {
@@ -147,7 +153,11 @@ func lookupAWithEcs(_name, _nameserver, _ecs string) []string {
 		_opt.Hdr.Name = "."
 		_opt.Hdr.Rrtype = dns.TypeOPT
 		// ipv6 mtu - udp header : 1280 - 48 = 1232
-		_opt.SetUDPSize(1232)
+		if dnsBufferSize >= 512 && dnsBufferSize < 65536 {
+			_opt.SetUDPSize(uint16(dnsBufferSize))
+		} else {
+			_opt.SetUDPSize(1232)
+		}
 		_opt_ecs := new(dns.EDNS0_SUBNET)
 		if _ipv4 := _ip.To4(); _ipv4 != nil {
 			_opt_ecs.Family = 1
@@ -167,7 +177,14 @@ func lookupAWithEcs(_name, _nameserver, _ecs string) []string {
 		}
 	}
 	_client := new(dns.Client)
-	_client.Timeout = 30 * time.Second
+	if dnsTimeout < 1*time.Second {
+		_client.Timeout = 5 * time.Second
+	} else {
+		_client.Timeout = dnsTimeout
+	}
+	if dnsUseTcp {
+		_client.Net = "tcp"
+	}
 	_respMsg, _, _err := _client.Exchange(_queryMsg, _nameserver)
 	if _err != nil {
 		return _ips
@@ -239,10 +256,13 @@ func main() {
 	_nameservers = removeDuplicate(_nameservers)
 	_ecss := getEcss(ecssStr, ecssFile)
 	_ecss = removeDuplicate(_ecss)
+
+	fmt.Printf("[+] %s\n", strings.Repeat("+ ", 6))
 	for _, _ns := range _nameservers {
 		for _, _ecs := range _ecss {
 			_ips := lookupAWithEcs(_host, _ns, _ecs)
-			fmt.Printf("[Resolver] Domain: '%s', NameServer: '%s', ECS: '%s', Answer: '%v'\n", _host, _ns, _ecs, _ips)
+			sort.Strings(_ips)
+			fmt.Printf("[+] Domain: '%s', NameServer: '%s', ECS: '%s', Answer: '%v'\n", _host, _ns, _ecs, _ips)
 			for _, _ip := range _ips {
 				_cdnnodes = append(_cdnnodes, _ip)
 			}
@@ -253,6 +273,7 @@ func main() {
 	_oldHost := _host
 	// do request
 	var wg sync.WaitGroup
+	fmt.Printf("[+] %s\n", strings.Repeat("+ ", 6))
 	for _, _node := range _cdnnodes {
 		_hostPort := strings.Replace(_urlStruct.Host, _oldHost, _node, 1)
 		_urlStruct.Host = _hostPort
@@ -271,9 +292,9 @@ func main() {
 			}
 			_resp, _err := _req.send()
 			if _err != nil {
-				fmt.Printf("[Fetcher] URL: '%s', Host: '%s', Error: '%v'\n", _req.url, _host, _err)
+				fmt.Printf("[+] URL: '%s', Host: '%s', Error: '%v'\n", _req.url, _host, _err)
 			} else if _resp != nil {
-				fmt.Printf("[Fetcher] URL: '%s', Host: '%s', Status: '%d'\n", _req.url, _host, _resp.StatusCode)
+				fmt.Printf("[+] URL: '%s', Host: '%s', Status: '%d'\n", _req.url, _host, _resp.StatusCode)
 			}
 			wg.Done()
 		}(_url)
