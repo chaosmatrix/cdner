@@ -29,34 +29,40 @@ type request struct {
 }
 
 var (
-	targetUrl            = ""
-	http2                = false
-	sni                  = ""
-	nameserversStr       = ""
-	nameserversFile      = ""
-	ecssStr              = ""
-	ecssFile             = ""
-	cdnnodesStr          = ""
-	cdnnodesFile         = ""
-	connectTimeout       = 30 * time.Second
-	readTimeout          = 30 * time.Second
-	dnsTimeout           = 5 * time.Second
-	dnsUseTcp            = false
-	dnsBufferSize   uint = 1232
+	targetUrl               = ""
+	httpMaxConcurrency      = 10
+	http2                   = false
+	sni                     = ""
+	cdnNodesStr             = ""
+	cdnNodesFile            = ""
+	httpConnectTimeout      = 30 * time.Second
+	httpReadTimeout         = 30 * time.Second
+	dnsNameserversStr       = ""
+	dnsNameserversFile      = ""
+	dnsEcssStr              = ""
+	dnsEcssFile             = ""
+	dnsMaxConcurrency       = 5
+	dnsTimeout              = 5 * time.Second
+	dnsUseTcp               = false
+	dnsBufferSize      uint = 1232
 )
 
 func init() {
 	flag.StringVar(&targetUrl, "target-url", targetUrl, "target url, example: https://localhost/index.png")
+	flag.IntVar(&httpMaxConcurrency, "http-max-concurrency", httpMaxConcurrency, "max number of concurrency http request")
 	flag.BoolVar(&http2, "http2", http2, "enable http2")
-	flag.StringVar(&sni, "sni", sni, "TLS ServerNameIdentifier")
-	flag.StringVar(&nameserversStr, "nameservers", nameserversStr, "nameservers ip address seperate with ';'")
-	flag.StringVar(&nameserversFile, "ns-from-file", nameserversFile, "nameservers ip address, one line one")
-	flag.StringVar(&ecssStr, "ecss", ecssStr, "enable edns-client-subnet feature, address seperate with ';', example: '1.2.3.4/30'")
-	flag.StringVar(&ecssFile, "ecss-from-file", ecssFile, "enable edns-client-subnet feature, address from file, one line one, example: '1.2.3.4/30'")
-	flag.StringVar(&cdnnodesStr, "cdnnodes", cdnnodesStr, "cdnnodes ip address seperate with ';'")
-	flag.StringVar(&cdnnodesFile, "cdnnodes-from-file", cdnnodesFile, "file cdnnodes ip address, one line one")
-	flag.DurationVar(&connectTimeout, "connect-timeout", connectTimeout, "timeout in establishe connection")
-	flag.DurationVar(&readTimeout, "read-timeout", readTimeout, "read timeout in established connection")
+	flag.StringVar(&sni, "sni", sni, "TLS ServerNameIdentifier, default is the host of target-url if https enabled")
+	flag.StringVar(&cdnNodesStr, "cdn-nodes", cdnNodesStr, "cdnnodes ip address seperate with ';'")
+	flag.StringVar(&cdnNodesFile, "cdn-nodes-from-file", cdnNodesFile, "cdnnodes ip address from file, one line one")
+	flag.DurationVar(&httpConnectTimeout, "http-connect-timeout", httpConnectTimeout, "timeout in establishe connection")
+	flag.DurationVar(&httpReadTimeout, "http-read-timeout", httpReadTimeout, "read timeout in established connection")
+
+	// resolver
+	flag.StringVar(&dnsNameserversStr, "dns-nameservers", dnsNameserversStr, "nameservers ip address seperate with ';'")
+	flag.StringVar(&dnsNameserversFile, "dns-nameservers-from-file", dnsNameserversFile, "nameservers ip address, one line one")
+	flag.StringVar(&dnsEcssStr, "dns-ecss", dnsEcssStr, "enable edns-client-subnet feature, address seperate with ';', example: '1.2.3.4/30'")
+	flag.StringVar(&dnsEcssFile, "dns-ecss-from-file", dnsEcssFile, "enable edns-client-subnet feature, address from file, one line one, example: '1.2.3.4/30'")
+	flag.IntVar(&dnsMaxConcurrency, "dns-max-concurrency", dnsMaxConcurrency, "max number of concurrency dns request")
 	flag.DurationVar(&dnsTimeout, "dns-timeout", dnsTimeout, "dns timeout")
 	flag.BoolVar(&dnsUseTcp, "dns-use-tcp", dnsUseTcp, "dns query via tcp protocol")
 	flag.UintVar(&dnsBufferSize, "dns-buffer-size", dnsBufferSize, "dns response buffer size")
@@ -250,12 +256,15 @@ func main() {
 	}
 	_host := _urlStruct.Hostname()
 
-	_cdnnodes := getCdnnodes(cdnnodesStr, cdnnodesFile)
+	_cdnnodes := getCdnnodes(cdnNodesStr, cdnNodesFile)
 
-	_nameservers := getNameServers(nameserversStr, nameserversFile)
+	_nameservers := getNameServers(dnsNameserversStr, dnsNameserversFile)
 	_nameservers = removeDuplicate(_nameservers)
-	_ecss := getEcss(ecssStr, ecssFile)
+	_ecss := getEcss(dnsEcssStr, dnsEcssFile)
 	_ecss = removeDuplicate(_ecss)
+	if len(_ecss) == 0 {
+		_ecss = []string{""}
+	}
 
 	fmt.Printf("[+] %s\n", strings.Repeat("+ ", 6))
 	for _, _ns := range _nameservers {
@@ -263,9 +272,7 @@ func main() {
 			_ips := lookupAWithEcs(_host, _ns, _ecs)
 			sort.Strings(_ips)
 			fmt.Printf("[+] Domain: '%s', NameServer: '%s', ECS: '%s', Answer: '%v'\n", _host, _ns, _ecs, _ips)
-			for _, _ip := range _ips {
-				_cdnnodes = append(_cdnnodes, _ip)
-			}
+			_cdnnodes = append(_cdnnodes, _ips...)
 		}
 	}
 	_cdnnodes = removeDuplicate(_cdnnodes)
@@ -273,21 +280,35 @@ func main() {
 	_oldHost := _host
 	// do request
 	var wg sync.WaitGroup
+	var _httpRateChan chan struct{}
+	if httpMaxConcurrency > 0 {
+		if httpMaxConcurrency < len(_cdnnodes) {
+			_httpRateChan = make(chan struct{}, httpMaxConcurrency)
+		} else {
+			_httpRateChan = make(chan struct{}, len(_cdnnodes))
+		}
+	}
 	fmt.Printf("[+] %s\n", strings.Repeat("+ ", 6))
 	for _, _node := range _cdnnodes {
 		_hostPort := strings.Replace(_urlStruct.Host, _oldHost, _node, 1)
 		_urlStruct.Host = _hostPort
 		_url := _urlStruct.String()
+		if httpMaxConcurrency > 0 {
+			_httpRateChan <- struct{}{}
+		}
 		wg.Add(1)
 		go func(_url string) {
 			//
+			if sni == "" && strings.EqualFold(_urlStruct.Scheme, "https") {
+				sni = _urlStruct.Hostname()
+			}
 			_req := request{
 				url:            _url,
 				http2:          false,
 				host:           _host,
 				sni:            sni,
-				connectTimeout: connectTimeout,
-				readTimeout:    readTimeout,
+				connectTimeout: httpConnectTimeout,
+				readTimeout:    httpReadTimeout,
 				//headers map[string][]string
 			}
 			_resp, _err := _req.send()
@@ -295,8 +316,11 @@ func main() {
 				fmt.Printf("[+] URL: '%s', Host: '%s', Error: '%v'\n", _req.url, _host, _err)
 			} else if _resp != nil {
 				fmt.Printf("[+] URL: '%s', Host: '%s', Status: '%d'\n", _req.url, _host, _resp.StatusCode)
+			} else {
+				fmt.Printf("[+] URL: '%s', Host: '%s', Error: 'Both Http Response and Error is empty'\n", _req.url, _host)
 			}
 			wg.Done()
+			<-_httpRateChan
 		}(_url)
 		_oldHost = _node
 	}
