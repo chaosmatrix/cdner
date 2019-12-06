@@ -280,7 +280,7 @@ func main() {
 	_oldHost := _host
 	// do request
 	var wg sync.WaitGroup
-	var _httpRateChan chan struct{}
+	_httpRateChan := make(chan struct{}, 1)
 	if httpMaxConcurrency > 0 {
 		if httpMaxConcurrency < len(_cdnnodes) {
 			_httpRateChan = make(chan struct{}, httpMaxConcurrency)
