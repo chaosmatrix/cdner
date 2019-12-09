@@ -241,6 +241,7 @@ func (req request) send() (*http.Response, error) {
 	if _err != nil {
 		return nil, _err
 	}
+	defer _resp.Body.Close() // discard response body
 	return _resp, err
 }
 
