@@ -37,6 +37,7 @@ var (
 	cdnNodesFile            = ""
 	httpConnectTimeout      = 30 * time.Second
 	httpReadTimeout         = 30 * time.Second
+	httpDiscardBody         = true
 	dnsNameserversStr       = ""
 	dnsNameserversFile      = ""
 	dnsEcssStr              = ""
@@ -56,6 +57,7 @@ func init() {
 	flag.StringVar(&cdnNodesFile, "cdn-nodes-from-file", cdnNodesFile, "cdnnodes ip address from file, one line one")
 	flag.DurationVar(&httpConnectTimeout, "http-connect-timeout", httpConnectTimeout, "timeout in establishe connection")
 	flag.DurationVar(&httpReadTimeout, "http-read-timeout", httpReadTimeout, "read timeout in established connection")
+	flag.BoolVar(&httpDiscardBody, "http-discard-body", httpDiscardBody, "discard http response body")
 
 	// resolver
 	flag.StringVar(&dnsNameserversStr, "dns-nameservers", dnsNameserversStr, "nameservers ip address seperate with ';'")
@@ -241,7 +243,10 @@ func (req request) send() (*http.Response, error) {
 	if _err != nil {
 		return nil, _err
 	}
-	defer _resp.Body.Close() // discard response body
+	if httpDiscardBody {
+		// discard response body
+		_resp.Body.Close()
+	}
 	return _resp, err
 }
 
