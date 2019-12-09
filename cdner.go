@@ -5,10 +5,13 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -29,23 +32,25 @@ type request struct {
 }
 
 var (
-	targetUrl               = ""
-	httpMaxConcurrency      = 10
-	http2                   = false
-	sni                     = ""
-	cdnNodesStr             = ""
-	cdnNodesFile            = ""
-	httpConnectTimeout      = 30 * time.Second
-	httpReadTimeout         = 30 * time.Second
-	httpDiscardBody         = true
-	dnsNameserversStr       = ""
-	dnsNameserversFile      = ""
-	dnsEcssStr              = ""
-	dnsEcssFile             = ""
-	dnsMaxConcurrency       = 5
-	dnsTimeout              = 5 * time.Second
-	dnsUseTcp               = false
-	dnsBufferSize      uint = 1232
+	targetUrl                 = ""
+	httpMaxConcurrency        = 10
+	http2                     = false
+	sni                       = ""
+	cdnNodesStr               = ""
+	cdnNodesFile              = ""
+	httpConnectTimeout        = 30 * time.Second
+	httpReadTimeout           = 30 * time.Second
+	httpDiscardBody           = true
+	httpOutputPath            = "/tmp/cdner"
+	httpOutputFileSuffix      = "_response.body"
+	dnsNameserversStr         = ""
+	dnsNameserversFile        = ""
+	dnsEcssStr                = ""
+	dnsEcssFile               = ""
+	dnsMaxConcurrency         = 5
+	dnsTimeout                = 5 * time.Second
+	dnsUseTcp                 = false
+	dnsBufferSize        uint = 1232
 )
 
 func init() {
@@ -58,6 +63,8 @@ func init() {
 	flag.DurationVar(&httpConnectTimeout, "http-connect-timeout", httpConnectTimeout, "timeout in establishe connection")
 	flag.DurationVar(&httpReadTimeout, "http-read-timeout", httpReadTimeout, "read timeout in established connection")
 	flag.BoolVar(&httpDiscardBody, "http-discard-body", httpDiscardBody, "discard http response body")
+	flag.StringVar(&httpOutputPath, "http-output-path", httpOutputPath, "when '--http-discard-body=false', output http response into file, store in this directory")
+	flag.StringVar(&httpOutputFileSuffix, "http-output-file-suffix", httpOutputFileSuffix, "http response output filename's suffix")
 
 	// resolver
 	flag.StringVar(&dnsNameserversStr, "dns-nameservers", dnsNameserversStr, "nameservers ip address seperate with ';'")
@@ -254,6 +261,7 @@ func main() {
 	flag.Parse()
 	if targetUrl == "" {
 		flag.Usage()
+		os.Exit(1)
 	}
 
 	_urlStruct, _err := url.Parse(targetUrl)
@@ -303,7 +311,7 @@ func main() {
 			_httpRateChan <- struct{}{}
 		}
 		wg.Add(1)
-		go func(_url string) {
+		go func(_url, _node string) {
 			//
 			if sni == "" && strings.EqualFold(_urlStruct.Scheme, "https") {
 				sni = _urlStruct.Hostname()
@@ -321,13 +329,28 @@ func main() {
 			if _err != nil {
 				fmt.Printf("[+] URL: '%s', Host: '%s', Error: '%v'\n", _req.url, _host, _err)
 			} else if _resp != nil {
-				fmt.Printf("[+] URL: '%s', Host: '%s', Status: '%d'\n", _req.url, _host, _resp.StatusCode)
+				if !httpDiscardBody {
+					if _, _err := os.Stat(httpOutputPath); os.IsNotExist(_err) {
+						os.MkdirAll(httpOutputPath, 0750)
+					}
+					_fp := path.Join(httpOutputPath, _host+"_"+_node+httpOutputFileSuffix)
+					if _fw, _err := os.OpenFile(_fp, os.O_CREATE|os.O_RDWR, 0500); _err == nil {
+						io.Copy(_fw, _resp.Body)
+						_fw.Close()
+						_resp.Body.Close()
+						fmt.Printf("[+] URL: '%s', Host: '%s', Status: '%d', Filename: '%s'\n", _req.url, _host, _resp.StatusCode, _fp)
+					} else {
+						fmt.Printf("[+] URL: '%s', Host: '%s', Status: '%d', Error: '%v'\n", _req.url, _host, _resp.StatusCode, _err)
+					}
+				} else {
+					fmt.Printf("[+] URL: '%s', Host: '%s', Status: '%d'\n", _req.url, _host, _resp.StatusCode)
+				}
 			} else {
 				fmt.Printf("[+] URL: '%s', Host: '%s', Error: 'Both Http Response and Error is empty'\n", _req.url, _host)
 			}
 			wg.Done()
 			<-_httpRateChan
-		}(_url)
+		}(_url, _node)
 		_oldHost = _node
 	}
 	wg.Wait()
