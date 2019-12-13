@@ -40,6 +40,8 @@ var (
 	cdnNodesFile              = ""
 	httpMethod                = "GET"
 	httpUserAgent             = "curl/7.61.0"
+	httpContentType           = ""
+	httpPayload               = ""
 	httpConnectTimeout        = 30 * time.Second
 	httpReadTimeout           = 30 * time.Second
 	httpDiscardBody           = true
@@ -66,6 +68,8 @@ func init() {
 	// fetcher
 	flag.StringVar(&httpMethod, "http-method", httpMethod, "http method, compitable with rfc")
 	flag.StringVar(&httpUserAgent, "http-user-agent", httpUserAgent, "set http user agent")
+	flag.StringVar(&httpContentType, "http-content-type", httpContentType, "http content type")
+	flag.StringVar(&httpPayload, "http-payload", httpPayload, "http request body direct send to remote server, without any formatted")
 	flag.DurationVar(&httpConnectTimeout, "http-connect-timeout", httpConnectTimeout, "timeout in establishe connection")
 	flag.DurationVar(&httpReadTimeout, "http-read-timeout", httpReadTimeout, "read timeout in established connection")
 	flag.BoolVar(&httpDiscardBody, "http-discard-body", httpDiscardBody, "discard http response body")
@@ -242,14 +246,24 @@ func (req request) send() (*http.Response, error) {
 
 	_client.Transport = _tr
 
-	_httpReq, _err := http.NewRequest(httpMethod, req.url, nil)
+	var _httpReq *http.Request
+	var _err error
+
+	if httpPayload == "" {
+		_httpReq, _err = http.NewRequest(httpMethod, req.url, nil)
+	} else {
+		_httpReq, _err = http.NewRequest(httpMethod, req.url, bytes.NewReader([]byte(httpPayload)))
+	}
 	if _err != nil {
 		return nil, _err
 	}
 	// must set "Host" like this
 	_httpReq.Host = req.host
-	_httpReq.Header.Add("Host", req.host)
-	_httpReq.Header.Add("User-Agent", httpUserAgent)
+	_httpReq.Header.Set("Host", req.host)
+	_httpReq.Header.Set("User-Agent", httpUserAgent)
+	if httpContentType != "" {
+		_httpReq.Header.Set("Content-Type", httpContentType)
+	}
 
 	// send
 	_resp, _err := _client.Do(_httpReq)
