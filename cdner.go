@@ -38,6 +38,8 @@ var (
 	sni                       = ""
 	cdnNodesStr               = ""
 	cdnNodesFile              = ""
+	httpMethod                = "GET"
+	httpUserAgent             = "curl/7.61.0"
 	httpConnectTimeout        = 30 * time.Second
 	httpReadTimeout           = 30 * time.Second
 	httpDiscardBody           = true
@@ -60,6 +62,10 @@ func init() {
 	flag.StringVar(&sni, "sni", sni, "TLS ServerNameIdentifier, default is the host of target-url if https enabled")
 	flag.StringVar(&cdnNodesStr, "cdn-nodes", cdnNodesStr, "cdnnodes ip address seperate with ';'")
 	flag.StringVar(&cdnNodesFile, "cdn-nodes-from-file", cdnNodesFile, "cdnnodes ip address from file, one line one")
+
+	// fetcher
+	flag.StringVar(&httpMethod, "http-method", httpMethod, "http method, compitable with rfc")
+	flag.StringVar(&httpUserAgent, "http-user-agent", httpUserAgent, "set http user agent")
 	flag.DurationVar(&httpConnectTimeout, "http-connect-timeout", httpConnectTimeout, "timeout in establishe connection")
 	flag.DurationVar(&httpReadTimeout, "http-read-timeout", httpReadTimeout, "read timeout in established connection")
 	flag.BoolVar(&httpDiscardBody, "http-discard-body", httpDiscardBody, "discard http response body")
@@ -236,14 +242,14 @@ func (req request) send() (*http.Response, error) {
 
 	_client.Transport = _tr
 
-	_httpReq, _err := http.NewRequest("GET", req.url, nil)
+	_httpReq, _err := http.NewRequest(httpMethod, req.url, nil)
 	if _err != nil {
 		return nil, _err
 	}
 	// must set "Host" like this
 	_httpReq.Host = req.host
 	_httpReq.Header.Add("Host", req.host)
-	_httpReq.Header.Add("User-Agent", "curl/7.61.0")
+	_httpReq.Header.Add("User-Agent", httpUserAgent)
 
 	// send
 	_resp, _err := _client.Do(_httpReq)
@@ -263,6 +269,9 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
+
+	// skip http method check
+	httpMethod = strings.ToUpper(httpMethod)
 
 	_urlStruct, _err := url.Parse(targetUrl)
 	if _err != nil {
