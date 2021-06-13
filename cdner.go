@@ -102,6 +102,7 @@ func combineIpStrFile(_str, _file string) []string {
 	}
 	_bs, _err := ioutil.ReadFile(_file)
 	if _err != nil {
+		fmt.Fprintf(os.Stderr, "[+] Open file: '%s', Error: '%s'\n", _file, _err)
 		return _array
 	}
 	for _, _byteline := range bytes.Split(_bs, []byte("\n")) {
