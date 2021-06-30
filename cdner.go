@@ -293,6 +293,8 @@ func main() {
 		panic(_err)
 	}
 	_host := _urlStruct.Hostname()
+	// ip address maxlen = 15 '://' = 3
+	_maxUrlLen := len(_urlStruct.Scheme+_urlStruct.Path+_urlStruct.RawQuery) + 15 + 3 // maxlen
 
 	_cdnnodes := getCdnnodes(cdnNodesStr, cdnNodesFile)
 
@@ -362,15 +364,15 @@ func main() {
 						io.Copy(_fw, _resp.Body)
 						_fw.Close()
 						_resp.Body.Close()
-						fmt.Printf("[+] URL: '%s', Host: '%s', Status: '%d', Filename: '%s'\n", _req.url, _host, _resp.StatusCode, _fp)
+						fmt.Printf("[+] URL: '%s', Host: '%s', Sni: '%s', Status: '%d', Filename: '%s'\n", _req.url, _host, sni, _resp.StatusCode, _fp)
 					} else {
-						fmt.Printf("[+] URL: '%s', Host: '%s', Status: '%d', Error: '%v'\n", _req.url, _host, _resp.StatusCode, _err)
+						fmt.Printf("[+] URL: '%s', Host: '%s', Sni: '%s', Status: '%d', Error: '%v'\n", _req.url, _host, sni, _resp.StatusCode, _err)
 					}
 				} else {
-					fmt.Printf("[+] URL: '%s', Host: '%s', Status: '%d'\n", _req.url, _host, _resp.StatusCode)
+					fmt.Printf("[+] URL: '%s', %sHost: '%s', Sni: '%s', Status: '%d'\n", _req.url, strings.Repeat(" ", _maxUrlLen-len(_req.url)), _host, sni, _resp.StatusCode)
 				}
 			} else {
-				fmt.Printf("[+] URL: '%s', Host: '%s', Error: 'Both Http Response and Error is empty'\n", _req.url, _host)
+				fmt.Printf("[+] URL: '%s', Host: '%s', Sni: '%s', Error: 'Both Http Response and Error is empty'\n", _req.url, _host, sni)
 			}
 			wg.Done()
 			<-_httpRateChan
@@ -378,4 +380,5 @@ func main() {
 		_oldHost = _node
 	}
 	wg.Wait()
+	fmt.Printf("[+] %s\n", strings.Repeat("+ ", 6))
 }
