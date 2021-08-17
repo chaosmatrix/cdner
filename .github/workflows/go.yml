@@ -44,8 +44,6 @@ jobs:
       - name: Test
         run: go test -v ./...
       # step6: upload artifacts
-      - name: clean artifacts
-        run: 
       - name: upload artifacts
         uses: actions/upload-artifact@v2
         with:
