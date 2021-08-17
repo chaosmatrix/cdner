@@ -41,15 +41,15 @@ jobs:
       - name: upload artifacts
         uses: actions/upload-artifact@v2
         with:
-          name: cdner-${{ env.TAG_NAME }}-${{ runner.os }}${{ env.OS_SUFFIX }}
-          path: ./cdner-${{ env.TAG_NAME }}-${{ runner.os }}${{ env.OS_SUFFIX }}
+          name: ${{ github.repository.name }}-${{ env.TAG_NAME }}-${{ runner.os }}${{ env.OS_SUFFIX }}
+          path: ./${{ github.repository.name }}-${{ env.TAG_NAME }}-${{ runner.os }}${{ env.OS_SUFFIX }}
 
       # step7: create release
       - name: release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: cdner-${{ env.TAG_NAME }}-${{ runner.os }}${{ env.OS_SUFFIX }}
+          files: ${{ github.repository.name }}-${{ env.TAG_NAME }}-${{ runner.os }}${{ env.OS_SUFFIX }}
 
   release-data:
     runs-on: ubuntu-latest
@@ -59,11 +59,11 @@ jobs:
       - name: upload artifacts
         uses: actions/upload-artifact@v2
         with:
-          name: cdner-data
+          name: ${{ github.repository.name }}-data
           path: ./data
 
       - name: release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: "./cdner-data**"
+          files: "data/**"
