@@ -48,7 +48,7 @@ jobs:
         uses: actions/upload-artifact@v2
         with:
           name: cdner-${{ matrix.os }}
-          path: ./
+          path: ./cdner-${{ matrix.os }}
 
       # step7: create release
       - name: release
