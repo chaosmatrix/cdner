@@ -10,6 +10,9 @@ on:
 
 env:
   TAG_NAME: ${{ github.event.inputs.TAG_NAME || github.event.release.tag_name }}
+  if: runner.os == 'Windows'
+  OS_SUFFIX: .exe
+  
 
 jobs:
 
@@ -28,12 +31,6 @@ jobs:
         uses: actions/setup-go@v2
         with:
           go-version: 1.16
-          
-      - name: Set up Suffix
-        if: runner.os == 'Windows'
-        run: |
-        env:
-          OS_SUFFIX: .exe
           
       - name: Build
         run: go build -o cdner-${{ env.TAG_NAME }}-${{ runner.os }}${{ env.OS_SUFFIX }} -v ./...
