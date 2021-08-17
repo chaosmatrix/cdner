@@ -1,9 +1,13 @@
 name: Go
 
 on:
-  push:
-    tags:
-      - 'v*.*.*'
+  release:
+    types: [released]
+  workflow_dispatch:
+    inputs:
+      TAG_NAME:
+        required: true
+
 env:
   TAG_NAME: ${{ github.event.inputs.TAG_NAME || github.event.release.tag_name }}
 
@@ -53,7 +57,7 @@ jobs:
         uses: actions/upload-artifact@v2
         with:
           name: cdner-data
-          path: ./data
+          path: data
 
       - name: release
         uses: softprops/action-gh-release@v1
