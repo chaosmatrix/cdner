@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest]
+        os: [ubuntu-latest]
         #os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v2
@@ -64,14 +64,18 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      - name: Build
+        run: tar -zcvf ${{ env.REPO_NAME }}-${{ env.TAG_NAME }}-data.tar.gz ./data
+        shell: bash
+        
       - name: upload artifacts
         uses: actions/upload-artifact@v2
         with:
-          name: ${{ env.REPO_NAME }}-data
-          path: ./data
+          name: ${{ env.REPO_NAME }}-${{ env.TAG_NAME }}-data.tar.gz
+          path: ./${{ env.REPO_NAME }}-${{ env.TAG_NAME }}-data.tar.gz
 
       - name: release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: "data/**"
+          files: ${{ env.REPO_NAME }}-${{ env.TAG_NAME }}-data.tar.gz
