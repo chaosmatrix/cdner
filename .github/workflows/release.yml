@@ -23,7 +23,7 @@ jobs:
         os: [ubuntu-latest]
         #os: [ubuntu-latest, windows-latest, macos-latest]
     env:
-        if: ${{runner.os}} == 'Windows'
+        if: runner.os == 'Windows'
         OS_SUFFIX: .exe
 
     steps:
