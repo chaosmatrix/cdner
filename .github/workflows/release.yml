@@ -10,10 +10,7 @@ on:
 
 env:
   TAG_NAME: ${{ github.event.inputs.TAG_NAME || github.event.release.tag_name }}
-  REPO_NAME: ${{ github.event.repository.name || github.event.pull_request.base.repo.name }}
-  if: ${{runner.os}} == 'Windows'
-  OS_SUFFIX: .exe
-  
+  REPO_NAME: ${{ github.event.repository.name || github.event.pull_request.base.repo.name }}  
 
 jobs:
 
@@ -25,6 +22,10 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         #os: [ubuntu-latest, windows-latest, macos-latest]
+    env:
+        if: ${{runner.os}} == 'Windows'
+        OS_SUFFIX: .exe
+
     steps:
       - uses: actions/checkout@v2
 
