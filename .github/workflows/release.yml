@@ -42,6 +42,7 @@ jobs:
         run: go build -o cdner-${{ env.TAG_NAME }}-${{ runner.os }}.exe -v ./...
 
       - name: Build-Others
+        if: ${{ runner.os != 'Windows' }}
         run: go build -o cdner-${{ env.TAG_NAME }}-${{ runner.os }} -v ./...
 
       - name: Test
