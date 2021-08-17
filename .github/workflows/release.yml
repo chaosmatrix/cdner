@@ -38,4 +38,4 @@ jobs:
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: cdner-${{ matrix.os }}
+          files: cdner-${{github.ref}}-${{ matrix.os }}
