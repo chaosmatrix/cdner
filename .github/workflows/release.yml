@@ -23,7 +23,7 @@ jobs:
         os: [ubuntu-latest]
         #os: [ubuntu-latest, windows-latest, macos-latest]
     env:
-        if: matrix.os == 'windows-latest'
+        if: ${{ matrix.os == 'windows-latest' }}
         OS_SUFFIX: .exe
 
     steps:
