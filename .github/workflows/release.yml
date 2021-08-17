@@ -28,6 +28,13 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      # Debug github action on linux platform
+      #- name: Dump github context
+      #  run:   echo "$GITHUB_CONTEXT"
+      #  shell: bash
+      #  env:
+      #   GITHUB_CONTEXT: ${{ toJson(github) }}
+
       - name: Set up Go
         uses: actions/setup-go@v2
         with:
