@@ -10,6 +10,7 @@ on:
 
 env:
   TAG_NAME: ${{ github.event.inputs.TAG_NAME || github.event.release.tag_name }}
+  REPO_NAME: ${{ github.event.repository.name || github.event.pull_request.base.repo.name }}
   if: runner.os == 'Windows'
   OS_SUFFIX: .exe
   
@@ -41,15 +42,15 @@ jobs:
       - name: upload artifacts
         uses: actions/upload-artifact@v2
         with:
-          name: ${{ github.repository.name }}-${{ env.TAG_NAME }}-${{ runner.os }}${{ env.OS_SUFFIX }}
-          path: ./${{ github.repository.name }}-${{ env.TAG_NAME }}-${{ runner.os }}${{ env.OS_SUFFIX }}
+          name: ${{ REPO_NAME }}-${{ env.TAG_NAME }}-${{ runner.os }}${{ env.OS_SUFFIX }}
+          path: ./${{ REPO_NAME }}-${{ env.TAG_NAME }}-${{ runner.os }}${{ env.OS_SUFFIX }}
 
       # step7: create release
       - name: release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: ${{ github.repository.name }}-${{ env.TAG_NAME }}-${{ runner.os }}${{ env.OS_SUFFIX }}
+          files: ${{ REPO_NAME }}-${{ env.TAG_NAME }}-${{ runner.os }}${{ env.OS_SUFFIX }}
 
   release-data:
     runs-on: ubuntu-latest
@@ -59,7 +60,7 @@ jobs:
       - name: upload artifacts
         uses: actions/upload-artifact@v2
         with:
-          name: ${{ github.repository.name }}-data
+          name: ${{ REPO_NAME }}-data
           path: ./data
 
       - name: release
