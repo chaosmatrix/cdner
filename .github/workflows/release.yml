@@ -22,9 +22,6 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         #os: [ubuntu-latest, windows-latest, macos-latest]
-    env:
-        if: ${{ matrix.os == 'windows-latest' }}
-        OS_SUFFIX: .exe
 
     steps:
       - uses: actions/checkout@v2
@@ -35,6 +32,11 @@ jobs:
       #  shell: bash
       #  env:
       #   GITHUB_CONTEXT: ${{ toJson(github) }}
+
+      - if: matrix.os == 'windows-latest'
+        run: ""
+        env: 
+          OS_SUFFIX: .exe
 
       - name: Set up Go
         uses: actions/setup-go@v2
