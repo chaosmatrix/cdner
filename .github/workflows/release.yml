@@ -32,7 +32,8 @@ jobs:
       #  env:
       #   GITHUB_CONTEXT: ${{ toJson(github) }}
 
-      - if: matrix.os == 'windows-latest'
+      - name: set os_suffix
+        if: ${{ matrix.os == 'windows-latest' }}
         run: ""
         env: 
           OS_SUFFIX: .exe
