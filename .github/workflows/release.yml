@@ -32,13 +32,7 @@ jobs:
         uses: actions/upload-artifact@v2
         with:
           name: cdner-${{ runner.os }}
-          path: ./cdner-${{ runner.os }}
-
-      - name: upload data artifacts
-        uses: actions/upload-artifact@v2
-        with:
-          name: cdner-data
-          path: ./data
+          path: ./cdner-${{ runner.os }} ./data
 
       # step7: create release
       - name: release
@@ -46,9 +40,3 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: cdner-${{ runner.os }}
-
-      - name: release-data
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: cdner-data
