@@ -1,4 +1,13 @@
 # cdner
+### Install
+##### Download Binary File
+
+https://github.com/chaosmatrix/cdner/releases
+
+##### Build Source Code
+```
+git clone https://github.com/chaosmatrix/cdner.git && cd cdner && go build
+```
 
 ### Usage
 ```
