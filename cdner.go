@@ -331,9 +331,7 @@ func main() {
 		_hostPort := strings.Replace(_urlStruct.Host, _oldHost, _node, 1)
 		_urlStruct.Host = _hostPort
 		_url := _urlStruct.String()
-		if httpMaxConcurrency > 0 {
-			_httpRateChan <- struct{}{}
-		}
+		_httpRateChan <- struct{}{}
 		wg.Add(1)
 		go func(_url, _node string) {
 			//
