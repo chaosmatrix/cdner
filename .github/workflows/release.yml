@@ -1,28 +1,57 @@
 name: Release
+
 on:
-  create:
-    tags:
-      - v*
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
 
-jobs: 
-  release: 
-    name: "Release binary"
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  CARGO_TERM_COLOR: always
+
+jobs:
+
+  linux:
     runs-on: ubuntu-latest
-    steps: 
-      - name: "Check out code"
-        uses: actions/checkout@v2.3.4
-        with: 
-          fetch-depth: 0
 
+    steps:
+      - uses: actions/checkout@v2
       - name: "Set up Go"
         uses: actions/setup-go@v2
         with: 
-          go-version: 1.16
-
-      - name: "Create release on GitHub"
-        uses: goreleaser/goreleaser-action@v2.7.0
-        env: 
-          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
-        with: 
-          args: "release --rm-dist"
-          version: latest
+          go-version: 1.17
+      - name: Darwin-Build-Upload
+        env:
+          CGO_ENABLED: 0
+          GOOS: darwin
+          GOARCH: amd64
+        run: |
+          go build -o ${GITHUB_REPOSITORY##*/}
+          tar -zcf ./${GITHUB_REPOSITORY##*/}_${GITHUB_REF##*/}_${GOOS}_${GOARCH}.tar.gz ${GITHUB_REPOSITORY##*/} dnsxl.txt
+          rm -f ${GITHUB_REPOSITORY##*/}
+          sha256sum ${GITHUB_REPOSITORY##*/}_${GITHUB_REF##*/}_${GOOS}_${GOARCH}.tar.gz >> ./${GITHUB_REPOSITORY##*/}_${GITHUB_REF##*/}.sha256sum
+          bash ./.github/workflows/upload_asset.sh ${GITHUB_REPOSITORY} ./${GITHUB_REPOSITORY##*/}_${GITHUB_REF##*/}_${GOOS}_${GOARCH}.tar.gz $GITHUB_TOKEN
+      - name: Linux-Build-Upload
+        env:
+          CGO_ENABLED: 0
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          go build -o ${GITHUB_REPOSITORY##*/}
+          tar -zcf ./${GITHUB_REPOSITORY##*/}_${GITHUB_REF##*/}_${GOOS}_${GOARCH}.tar.gz ${GITHUB_REPOSITORY##*/} dnsxl.txt
+          rm -f ${GITHUB_REPOSITORY##*/}
+          sha256sum ${GITHUB_REPOSITORY##*/}_${GITHUB_REF##*/}_${GOOS}_${GOARCH}.tar.gz >> ./${GITHUB_REPOSITORY##*/}_${GITHUB_REF##*/}.sha256sum
+          bash ./.github/workflows/upload_asset.sh ${GITHUB_REPOSITORY} ./${GITHUB_REPOSITORY##*/}_${GITHUB_REF##*/}_${GOOS}_${GOARCH}.tar.gz $GITHUB_TOKEN
+      - name: Windows-Build-Upload
+        env:
+          CGO_ENABLED: 0
+          GOOS: windows
+          GOARCH: amd64
+        run: |
+          go build -o ${GITHUB_REPOSITORY##*/}.exe
+          tar -zcf ./${GITHUB_REPOSITORY##*/}_${GITHUB_REF##*/}_${GOOS}_${GOARCH}.tar.gz ${GITHUB_REPOSITORY##*/}.exe dnsxl.txt
+          rm -f ${GITHUB_REPOSITORY##*/}.exe
+          sha256sum ${GITHUB_REPOSITORY##*/}_${GITHUB_REF##*/}_${GOOS}_${GOARCH}.tar.gz >> ./${GITHUB_REPOSITORY##*/}_${GITHUB_REF##*/}.sha256sum
+          bash ./.github/workflows/upload_asset.sh ${GITHUB_REPOSITORY} ./${GITHUB_REPOSITORY##*/}_${GITHUB_REF##*/}_${GOOS}_${GOARCH}.tar.gz $GITHUB_TOKEN
+      - name: Upload checksum
+        run: |
+          bash ./.github/workflows/upload_asset.sh ${GITHUB_REPOSITORY} ./${GITHUB_REPOSITORY##*/}_${GITHUB_REF##*/}.sha256sum $GITHUB_TOKEN
