@@ -19,13 +19,17 @@ jobs:
         uses: actions/setup-go@v2
         with: 
           go-version: 1.17
+      - name: Install-Pkg
+        run: |
+          apt-get update -y && apt-get install -y upx-ucl
       - name: Darwin-Build-Upload
         env:
           CGO_ENABLED: 0
           GOOS: darwin
           GOARCH: amd64
         run: |
-          go build -o ${GITHUB_REPOSITORY##*/}
+          go build -ldflags '-s -w' -o ${GITHUB_REPOSITORY##*/}
+          upx ${GITHUB_REPOSITORY##*/}
           tar -zcf ./${GITHUB_REPOSITORY##*/}_${GITHUB_REF##*/}_${GOOS}_${GOARCH}.tar.gz ${GITHUB_REPOSITORY##*/} data
           rm -f ${GITHUB_REPOSITORY##*/}
           sha256sum ${GITHUB_REPOSITORY##*/}_${GITHUB_REF##*/}_${GOOS}_${GOARCH}.tar.gz >> ./${GITHUB_REPOSITORY##*/}_${GITHUB_REF##*/}.sha256sum
@@ -36,7 +40,8 @@ jobs:
           GOOS: linux
           GOARCH: amd64
         run: |
-          go build -o ${GITHUB_REPOSITORY##*/}
+          go build -ldflags '-s -w' -o ${GITHUB_REPOSITORY##*/}
+          upx ${GITHUB_REPOSITORY##*/}
           tar -zcf ./${GITHUB_REPOSITORY##*/}_${GITHUB_REF##*/}_${GOOS}_${GOARCH}.tar.gz ${GITHUB_REPOSITORY##*/} data
           rm -f ${GITHUB_REPOSITORY##*/}
           sha256sum ${GITHUB_REPOSITORY##*/}_${GITHUB_REF##*/}_${GOOS}_${GOARCH}.tar.gz >> ./${GITHUB_REPOSITORY##*/}_${GITHUB_REF##*/}.sha256sum
@@ -47,7 +52,8 @@ jobs:
           GOOS: windows
           GOARCH: amd64
         run: |
-          go build -o ${GITHUB_REPOSITORY##*/}.exe
+          go build -ldflags '-s -w' -o ${GITHUB_REPOSITORY##*/}.exe
+          upx ${GITHUB_REPOSITORY##*/}.exe
           tar -zcf ./${GITHUB_REPOSITORY##*/}_${GITHUB_REF##*/}_${GOOS}_${GOARCH}.tar.gz ${GITHUB_REPOSITORY##*/}.exe data
           rm -f ${GITHUB_REPOSITORY##*/}.exe
           sha256sum ${GITHUB_REPOSITORY##*/}_${GITHUB_REF##*/}_${GOOS}_${GOARCH}.tar.gz >> ./${GITHUB_REPOSITORY##*/}_${GITHUB_REF##*/}.sha256sum
