@@ -21,7 +21,7 @@ jobs:
           go-version: 1.17
       - name: Install-Pkg
         run: |
-          apt-get update -y && apt-get install -y upx-ucl
+          sudo apt-get update -y && sudo apt-get install -y upx-ucl
       - name: Darwin-Build-Upload
         env:
           CGO_ENABLED: 0
